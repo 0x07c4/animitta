@@ -1,50 +1,7 @@
+#include "base/geo.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_render.h>
 #include <SDL2/SDL_video.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-static inline void put_pixel(uint32_t *pixels, int w, int h, int x, int y,
-                             uint32_t color) {
-  if ((unsigned)x >= (unsigned)w || (unsigned)y >= (unsigned)h)
-    return;
-  pixels[y * w + x] = color;
-}
-
-static void clear(uint32_t *pixels, int w, int h, uint32_t color) {
-  for (int i = 0; i < w * h; i++)
-    pixels[i] = color;
-}
-
-static void draw_rect_filled(uint32_t *pixels, int W, int H, int x, int y,
-                             int w, int h, uint32_t color) {
-  int x0 = x, y0 = y;
-  int x1 = x + w, y1 = y + h;
-  if (x0 < x)
-    x0 = 0;
-  if (y0 < 0)
-    y0 = 0;
-  if (x1 > W)
-    x1 = W;
-  if (y1 > H)
-    y1 = H;
-
-  for (int yy = y0; yy < y1; yy++) {
-    for (int xx = x0; xx < x1; xx++) {
-      put_pixel(pixels, W, H, xx, yy, color);
-    }
-  }
-}
-
-static void draw_line_filled(uint32_t *pixels, int x1, int y1, int x2, int y2,
-                             uint32_t color) {
-  for (int i = x1; i <= x2; i++) {
-    for (int j = y1; j <= y2; j++) {
-      put_pixel(pixels, x2, y2, i, j, color);
-    }
-  }
-}
 
 int main(void) {
   const int W = 800;
@@ -131,15 +88,17 @@ int main(void) {
     // }
 
     clear(pixels, W, H, 0xFF101018u);
+    draw_line(pixels, W, H, 10, 10, W - 10, 10, 0xFFFF0000u); // 顶部红线
+    // draw_line(pixels, 10, 10, 10, H - 10, 0xFF00FF00u);     // 左侧绿线
+    // draw_line(pixels, 10, 10, W - 10, H - 10, 0xFF00A0FFu); // 对角线
+
+    // draw_line(pixels, x1, y1, x2, y2, 0xFF00FF00u);
     int rect_w = 120;
     int rect_h = 80;
     int x = (int)((t / 4) % (uint32_t)(W + rect_w)) - rect_w;
     int y = H / 2 - rect_h / 2;
 
     draw_rect_filled(pixels, W, H, x, y, rect_w, rect_h, 0xFFFFCC00u);
-
-    int x1 = 0, y1 = 0, x2 = t / 4 % W + x1, y2 = t / 4 % H + y1;
-    draw_line_filled(pixels, x1, y1, x2, y2, 0xFF00FF00u);
 
     SDL_UpdateTexture(tex, NULL, pixels, W * (int)sizeof(uint32_t));
     SDL_RenderClear(ren);
