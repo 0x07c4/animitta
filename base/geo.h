@@ -2,14 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static inline void put_pixel(uint32_t *pixels, int w, int h, int x, int y,
-                             uint32_t color) {
+#define PENCILDEF static inline
+
+PENCILDEF void put_pixel(uint32_t *pixels, int w, int h, int x, int y,
+                         uint32_t color) {
   if ((unsigned)x >= (unsigned)w || (unsigned)y >= (unsigned)h)
     return;
   pixels[y * w + x] = color;
 }
 
-static void clear(uint32_t *pixels, int w, int h, uint32_t color) {
+PENCILDEF void pencil_clear(uint32_t *pixels, int w, int h, uint32_t color) {
   for (int i = 0; i < w * h; i++)
     pixels[i] = color;
 }

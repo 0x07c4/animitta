@@ -13,7 +13,7 @@ int main(void) {
   }
 
   SDL_Window *win =
-      SDL_CreateWindow("C + Graphics (CPU framebuffer)", SDL_WINDOWPOS_CENTERED,
+      SDL_CreateWindow("C Graphics (CPU framebuffer)", SDL_WINDOWPOS_CENTERED,
                        SDL_WINDOWPOS_CENTERED, W, H, SDL_WINDOW_SHOWN);
   if (!win) {
     fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
@@ -87,10 +87,10 @@ int main(void) {
     //   }
     // }
 
-    clear(pixels, W, H, 0xFF101018u);
-    draw_line(pixels, W, H, 10, 10, W - 10, 10, 0xFFFF0000u); // 顶部红线
-    // draw_line(pixels, 10, 10, 10, H - 10, 0xFF00FF00u);     // 左侧绿线
-    // draw_line(pixels, 10, 10, W - 10, H - 10, 0xFF00A0FFu); // 对角线
+    pencil_clear(pixels, W, H, 0xFF101018u);
+    draw_line(pixels, W, H, 10, 10, W - 10, 10, 0xFFFF0000u);     // 顶部红线
+    draw_line(pixels, W, H, 10, 10, 10, H - 10, 0xFF00FF00u);     // 左侧绿线
+    draw_line(pixels, W, H, 10, 10, W - 10, H - 10, 0xFF00A0FFu); // 对角线
 
     // draw_line(pixels, x1, y1, x2, y2, 0xFF00FF00u);
     int rect_w = 120;
