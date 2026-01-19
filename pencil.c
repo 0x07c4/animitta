@@ -8,6 +8,10 @@
 
 #define PENCILDEF static inline
 
+#define PENCIL_GRAY 0xFF202020
+#define PENCIL_RED 0xFF0000FF
+#define PENCIL_GREEN 0xFF00FF00
+
 #define return_defer(value)                                                    \
   do {                                                                         \
     result = value;                                                            \
@@ -79,6 +83,28 @@ PENCILDEF void draw_line(uint32_t *pixels, int w, int h, int x1, int y1, int x2,
       break;
     pixels[ty * w + tx] = color;
     fprintf(stdout, "tx: %d, ty: %d, color: %x\n", tx, ty, color);
+  }
+}
+
+void pencil_circle(PencilCanvas *canvas, int x, int y, size_t r,
+                   uint32_t color) {
+  int x1 = x - (int)r;
+  int y1 = y - (int)r;
+  int x2 = x + (int)r;
+  int y2 = y + (int)r;
+
+  if (x1 < 0 || x2 > canvas->width || y1 < 0 || y2 > canvas->height) {
+    fprintf(stderr, "out of range, x1: %d, y1: %d, x2: %d, y2: %d\n", x1, y1,
+            x2, y2);
+    return;
+  }
+
+  for (int i = y1; i <= y2; i++) {
+    for (int j = x1; j <= x2; j++) {
+      if (((i - y) * (i - y) + (j - x) * (j - x)) > r * r)
+        continue;
+      canvas->pixels[i * canvas->width + j] = color;
+    }
   }
 }
 
