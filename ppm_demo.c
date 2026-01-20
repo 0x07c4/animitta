@@ -45,6 +45,7 @@ bool circle_example(void) {
   PencilCanvas canvas = {.pixels = pixels, .height = HEIGHT, .width = WIDTH};
   pencil_fill(&canvas, PENCIL_GRAY);
 
+  size_t radius = CELL_WIDTH < CELL_HEIGHT ? CELL_WIDTH : CELL_HEIGHT;
   for (int y = 0; y < ROWS; y++) {
     for (int x = 0; x < COLS; x++) {
       uint32_t color;
@@ -54,9 +55,7 @@ bool circle_example(void) {
         color = PENCIL_GREEN;
       }
       pencil_circle(&canvas, x * CELL_WIDTH + CELL_WIDTH / 2,
-                    y * CELL_HEIGHT + CELL_HEIGHT / 2,
-                    (CELL_WIDTH < CELL_HEIGHT ? CELL_WIDTH : CELL_HEIGHT) / 4,
-                    color);
+                    y * CELL_HEIGHT + CELL_HEIGHT / 2, radius / 2, color);
     }
   }
   const char *output = "circle.ppm";

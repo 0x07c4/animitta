@@ -86,8 +86,8 @@ PENCILDEF void draw_line(uint32_t *pixels, int w, int h, int x1, int y1, int x2,
   }
 }
 
-void pencil_circle(PencilCanvas *canvas, int x, int y, size_t r,
-                   uint32_t color) {
+PENCILDEF void pencil_circle(PencilCanvas *canvas, int x, int y, size_t r,
+                             uint32_t color) {
   int x1 = x - (int)r;
   int y1 = y - (int)r;
   int x2 = x + (int)r;
@@ -99,8 +99,8 @@ void pencil_circle(PencilCanvas *canvas, int x, int y, size_t r,
     return;
   }
 
-  for (int i = y1; i <= y2; i++) {
-    for (int j = x1; j <= x2; j++) {
+  for (int i = y1; i < y2; i++) {
+    for (int j = x1; j < x2; j++) {
       if (((i - y) * (i - y) + (j - x) * (j - x)) > r * r)
         continue;
       canvas->pixels[i * canvas->width + j] = color;
