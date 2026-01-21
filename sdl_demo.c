@@ -76,23 +76,11 @@ int main(void) {
 
     fprintf(stdout, "t: %d\n", t);
 
-    // for (int y = 0; y < H; y++) {
-    //   for (int x = 0; x < W; x++) {
-    //     uint8_t r = (uint8_t)((x + (int)(t / 10)) & 255);
-    //     uint8_t g = (uint8_t)((y + (int)(t / 13)) & 255);
-    //     uint8_t b = (uint8_t)((x + y + (int)(t / 17)) & 255);
-    //
-    //     pixels[y * W + x] = 0xFF000000u | ((uint32_t)r << 16) |
-    //                         ((uint32_t)g << 8) | (uint32_t)b;
-    //   }
-    // }
-
     pencil_clear(pixels, W, H, 0xFF101018u);
-    draw_line(pixels, W, H, 10, 10, W - 10, 10, 0xFFFF0000u);     // 顶部红线
-    draw_line(pixels, W, H, 10, 10, 10, H - 10, 0xFF00FF00u);     // 左侧绿线
-    draw_line(pixels, W, H, 10, 10, W - 10, H - 10, 0xFF00A0FFu); // 对角线
+    draw_line(pixels, W, H, 10, 10, W - 10, 10, 0xFFFF0000u);
+    draw_line(pixels, W, H, 10, 10, 10, H - 10, 0xFF00FF00u);
+    draw_line(pixels, W, H, 10, 10, W - 10, H - 10, 0xFF00A0FFu);
 
-    // draw_line(pixels, x1, y1, x2, y2, 0xFF00FF00u);
     int rect_w = 120;
     int rect_h = 80;
     int x = (int)((t / 4) % (uint32_t)(W + rect_w)) - rect_w;

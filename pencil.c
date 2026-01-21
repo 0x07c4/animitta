@@ -11,6 +11,7 @@
 #define PENCIL_GRAY 0xFF202020
 #define PENCIL_RED 0xFF0000FF
 #define PENCIL_GREEN 0xFF00FF00
+#define PENCIL_BLUE 0XFFFF0000
 
 #define return_defer(value)                                                    \
   do {                                                                         \
@@ -36,7 +37,7 @@ PENCILDEF void pencil_fill(PencilCanvas *canvas, uint32_t color) {
   }
 }
 
-PENCILDEF void pencil_clear(PencilCanvas *canvas, uint32_t color) {
+PENCILDEF void pencil_draw_clear(PencilCanvas *canvas, uint32_t color) {
   for (int i = 0; i < canvas->width * canvas->height; i++)
     canvas->pixels[i] = color;
 }
@@ -55,8 +56,8 @@ PENCILDEF int rect_create(int x, int y, int w, int h) {
   return 0;
 }
 
-PENCILDEF void pencil_rect(PencilCanvas *canvas, int x, int y, size_t w,
-                           size_t h, uint32_t color) {
+PENCILDEF void pencil_draw_rect(PencilCanvas *canvas, int x, int y, size_t w,
+                                size_t h, uint32_t color) {
   for (int dy = 0; dy < (int)h; dy++) {
     int ny = y + dy;
     if (0 <= y && y <= (int)canvas->height) {
@@ -69,25 +70,41 @@ PENCILDEF void pencil_rect(PencilCanvas *canvas, int x, int y, size_t w,
   }
 }
 
-PENCILDEF void draw_line(uint32_t *pixels, int w, int h, int x1, int y1, int x2,
-                         int y2, uint32_t color) {
+PENCILDEF void swap(int *a, int *b) {
+  *a = *a ^ *b; // t
+  *b = *a ^ *b; // t^b
+  *a = *a ^ *b; // t^a
+}
+
+PENCILDEF void pencil_draw_line(PencilCanvas *canvas, int x1, int y1, int x2,
+                                int y2, uint32_t color) {
+  // Bresenham
+  if (x1 > x2)
+    swap(&x1, &x2);
+  if (y1 > y2)
+    swap(&y1, &y2);
   int dx = x2 - x1;
   int dy = y2 - y1;
 
-  float dl = 0.001;
-  for (float i = 0.0; i <= 1.0; i += dl) {
-    int tx = x1 + dx * i;
-    int ty = y1 + dy * i;
-    // put_pixel(pixels, x2, y2, i, ty, color);
-    if (tx > w || ty > h)
-      break;
-    pixels[ty * w + tx] = color;
-    fprintf(stdout, "tx: %d, ty: %d, color: %x\n", tx, ty, color);
+  int e = 0, y = y1;
+  if (dx != 0) {
+    for (int x = x1; x <= x2; x++) {
+      e += dy;
+      if ((e << 1) >= dx) {
+        y++;
+        e -= dx;
+      }
+      canvas->pixels[y * canvas->width + x] = color;
+    }
+  } else {
+    for (int y = y1; y <= y2; y++) {
+      canvas->pixels[y * canvas->width + x1] = color;
+    }
   }
 }
 
-PENCILDEF void pencil_circle(PencilCanvas *canvas, int x, int y, size_t r,
-                             uint32_t color) {
+PENCILDEF void pencil_draw_circle(PencilCanvas *canvas, int x, int y, size_t r,
+                                  uint32_t color) {
   int x1 = x - (int)r;
   int y1 = y - (int)r;
   int x2 = x + (int)r;
