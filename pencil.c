@@ -1,10 +1,13 @@
 #ifndef PENCIL_C_
 #define PENCIL_C_
 
+#include "base/log.h"
 #include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define PENCILDEF static inline
 
@@ -28,6 +31,10 @@ typedef struct {
 typedef struct {
   int x, y, w, h;
 } PencilRect;
+
+typedef struct {
+  int x, y;
+} PencilPoint;
 
 PENCILDEF void pencil_fill(PencilCanvas *canvas, uint32_t color) {
   for (size_t y = 0; y < canvas->height; y++) {
@@ -76,31 +83,54 @@ PENCILDEF void swap(int *a, int *b) {
   *a = *a ^ *b; // t^a
 }
 
-PENCILDEF void pencil_draw_line(PencilCanvas *canvas, int x1, int y1, int x2,
-                                int y2, uint32_t color) {
+PENCILDEF void swap_point(PencilPoint *p1, PencilPoint *p2) {
+  swap(&p1->x, &p2->x);
+  swap(&p1->y, &p2->y);
+}
+
+PENCILDEF bool pencil_point_steep(PencilPoint *p1, PencilPoint *p2) {
+  return abs(p1->y - p2->y) > abs(p1->x - p2->x);
+}
+
+PENCILDEF void pencil_draw_line(PencilCanvas *canvas, PencilPoint *p1,
+                                PencilPoint *p2, uint32_t color) {
   // Bresenham
-  if (x1 > x2) {
-    swap(&x1, &x2);
-    swap(&y1, &y2);
+  LOG_INFO("RAW  p1:{%d,%d} p2:{%d,%d}", p1->x, p1->y, p2->x, p2->y);
+  bool steep = pencil_point_steep(p1, p2);
+  if (steep) {
+    swap(&p1->x, &p1->y);
+    swap(&p2->x, &p2->y);
   }
 
-  int dx = x2 - x1;
-  int dy = y2 - y1;
+  if (p1->x > p2->x) {
+    swap_point(p1, p2);
+  }
+  int dx = p2->x - p1->x;
+  int dy = p2->y - p1->y;
 
-  fprintf(stdout, "%d %d\n", dx, dy);
-  int e = 0, y = y1;
-  if (dx != 0) {
-    for (int x = x1; x <= x2; x++) {
-      e += dy;
+  LOG_INFO("NORM p1: {%d, %d}, p2: {%d, %d}", p1->x, p1->y, p2->x, p2->y);
+  int e = 0, y = p1->y;
+  if (steep) {
+    for (int x = p1->x; x <= p2->x; x++) {
+      e += abs(dy);
       if ((e << 1) >= dx) {
-        y++;
+        y += dy >= 0 ? 1 : -1;
         e -= dx;
       }
-      canvas->pixels[y * canvas->width + x] = color;
+
+      if (y > 0 && y < canvas->width && x > 0 && x < canvas->height)
+        canvas->pixels[x * canvas->width + y] = color;
     }
   } else {
-    for (int y = y1; y <= y2; y++) {
-      canvas->pixels[y * canvas->width + x1] = color;
+    for (int x = p1->x; x <= p2->x; x++) {
+      e += abs(dy);
+      if ((e << 1) >= dx) {
+        y += dy >= 0 ? 1 : -1;
+        e -= dx;
+      }
+
+      if (x > 0 && x < canvas->width && y > 0 && y < canvas->height)
+        canvas->pixels[y * canvas->width + x] = color;
     }
   }
 }

@@ -77,10 +77,20 @@ bool circle_example(void) {
 bool line_example(void) {
   PencilCanvas canvas = {.pixels = pixels, .height = HEIGHT, .width = WIDTH};
   pencil_fill(&canvas, PENCIL_GRAY);
-  pencil_draw_line(&canvas, 10, 10, WIDTH - 10, 10, PENCIL_RED);
-  pencil_draw_line(&canvas, 10, 10, 10, HEIGHT - 10, PENCIL_GREEN);
-  pencil_draw_line(&canvas, 10, 10, WIDTH - 10, HEIGHT - 10, PENCIL_BLUE);
-  pencil_draw_line(&canvas, WIDTH - 10, 10, 10, HEIGHT - 10, PENCIL_BLUE);
+  pencil_draw_line(&canvas, &(PencilPoint){10, 10},
+                   &(PencilPoint){WIDTH - 10, 10}, PENCIL_RED);
+  pencil_draw_line(&canvas, &(PencilPoint){10, 10},
+                   &(PencilPoint){10, HEIGHT - 10}, PENCIL_GREEN);
+  pencil_draw_line(&canvas, &(PencilPoint){10, 10},
+                   &(PencilPoint){WIDTH - 10, HEIGHT - 10}, PENCIL_BLUE);
+  pencil_draw_line(&canvas, &(PencilPoint){WIDTH - 10, 10},
+                   &(PencilPoint){10, HEIGHT - 10}, PENCIL_BLUE);
+  pencil_draw_line(&canvas, &(PencilPoint){10, 10}, &(PencilPoint){200, 30},
+                   PENCIL_GREEN);
+  pencil_draw_line(&canvas, &(PencilPoint){100, 20},
+                   &(PencilPoint){200, HEIGHT - 20}, PENCIL_RED);
+  pencil_draw_line(&canvas, &(PencilPoint){200, HEIGHT - 20},
+                   &(PencilPoint){220, 20}, PENCIL_RED);
 
   const char *output = "line.ppm";
   int err = pencil_save_to_ppm(&canvas, output);
