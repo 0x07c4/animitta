@@ -1,10 +1,12 @@
 #ifndef PENCIL_C_
 #define PENCIL_C_
 
+#include "base/log.h"
 #include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define PENCILDEF static inline
 
@@ -87,14 +89,20 @@ PENCILDEF void pencil_draw_line(PencilCanvas *canvas, int x1, int y1, int x2,
   int dx = x2 - x1;
   int dy = y2 - y1;
 
-  fprintf(stdout, "%d %d\n", dx, dy);
   int e = 0, y = y1;
   if (dx != 0) {
+    float origin_slope = (float)dy / dx;
     for (int x = x1; x <= x2; x++) {
-      e += dy;
+      e += abs(dy);
       if ((e << 1) >= dx) {
-        y++;
+        y += (dy > 0) ? 1 : -1;
         e -= dx;
+      }
+
+      if (x != x1) {
+        float cur_slope = (float)(y - y1) / (x - x1);
+        LOG_INFO("x: %d, y: %d", x, y);
+        LOG_INFO("origin_slope: %f, cur_slope: %f", origin_slope, cur_slope);
       }
       canvas->pixels[y * canvas->width + x] = color;
     }
