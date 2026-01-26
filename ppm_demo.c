@@ -80,6 +80,7 @@ bool line_example(void) {
   pencil_draw_line(&canvas, 10, 10, WIDTH - 10, 10, PENCIL_RED);
   pencil_draw_line(&canvas, 10, 10, 10, HEIGHT - 10, PENCIL_GREEN);
   pencil_draw_line(&canvas, 10, 10, WIDTH - 10, HEIGHT - 10, PENCIL_BLUE);
+  pencil_draw_line(&canvas, WIDTH - 10, 10, 10, HEIGHT - 10, PENCIL_BLUE);
 
   const char *output = "line.ppm";
   int err = pencil_save_to_ppm(&canvas, output);

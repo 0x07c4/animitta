@@ -79,13 +79,15 @@ PENCILDEF void swap(int *a, int *b) {
 PENCILDEF void pencil_draw_line(PencilCanvas *canvas, int x1, int y1, int x2,
                                 int y2, uint32_t color) {
   // Bresenham
-  if (x1 > x2)
+  if (x1 > x2) {
     swap(&x1, &x2);
-  if (y1 > y2)
     swap(&y1, &y2);
+  }
+
   int dx = x2 - x1;
   int dy = y2 - y1;
 
+  fprintf(stdout, "%d %d\n", dx, dy);
   int e = 0, y = y1;
   if (dx != 0) {
     for (int x = x1; x <= x2; x++) {
