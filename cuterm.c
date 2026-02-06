@@ -5,7 +5,6 @@
 #define LOG_ENABLE
 #include "base/log.h"
 #include <GL/gl.h>
-#include <GL/glu.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_render.h>
 #include <SDL2/SDL_ttf.h>
