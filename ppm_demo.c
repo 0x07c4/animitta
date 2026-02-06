@@ -103,6 +103,21 @@ bool line_example(void) {
   return true;
 }
 
+bool triangle_example(void) {
+  PencilCanvas canvas = {.pixels = pixels, .height = HEIGHT, .width = WIDTH};
+  pencil_fill(&canvas, PENCIL_GRAY);
+
+  const char *output = "triangle.ppm";
+  int err = pencil_save_to_ppm(&canvas, output);
+  if (err) {
+    fprintf(stderr, "ERROR: could not save file %s: %s\n", output,
+            strerror(errno));
+    return false;
+  }
+
+  return true;
+}
+
 int main() {
   if (!chess_example())
     return -1;

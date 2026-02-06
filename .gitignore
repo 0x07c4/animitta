@@ -1,2 +1,10 @@
 build/
 *.ppm
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+.venv/
+.conan2/
+CMakeUserPresets.json
