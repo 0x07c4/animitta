@@ -63,7 +63,17 @@ jobs:
         run: python -m pip install --upgrade pip conan
 
       - name: Build
-        run: ./build.sh Release
+        shell: bash
+        run: |
+          set -o pipefail
+          CONAN_SYSREQ_MODE=install ./build.sh Release 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ steps.meta.outputs.tag }}
+          path: build.log
 
       - name: Package artifacts
         id: package

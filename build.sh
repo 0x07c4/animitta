@@ -10,6 +10,8 @@ BUILD_ROOT="build/${BUILD_TYPE}"
 CONAN_DIR="${BUILD_ROOT}/conan"
 CMAKE_DIR="${BUILD_ROOT}/cmake"
 INSTALL_DIR="${BUILD_ROOT}/install"
+CONAN_SYSREQ_MODE="${CONAN_SYSREQ_MODE:-check}"
+CONAN_SYSREQ_SUDO="${CONAN_SYSREQ_SUDO:-True}"
 
 CONAN_BIN="${CONAN_BIN:-conan}"
 if [ -x "${ROOT_DIR}/.venv/bin/conan" ]; then
@@ -26,10 +28,20 @@ cmake --version >/dev/null
 # Safe to run repeatedly; ensures local default profile exists.
 "${CONAN_BIN}" profile detect --force >/dev/null
 
-"${CONAN_BIN}" install . \
-  --output-folder "${CONAN_DIR}" \
-  --build=missing \
-  -s build_type="${BUILD_TYPE}"
+if [ "${CONAN_SYSREQ_MODE}" = "install" ]; then
+  "${CONAN_BIN}" install . \
+    --output-folder "${CONAN_DIR}" \
+    --build=missing \
+    -s build_type="${BUILD_TYPE}" \
+    -c "tools.system.package_manager:mode=install" \
+    -c "tools.system.package_manager:sudo=${CONAN_SYSREQ_SUDO}"
+else
+  "${CONAN_BIN}" install . \
+    --output-folder "${CONAN_DIR}" \
+    --build=missing \
+    -s build_type="${BUILD_TYPE}" \
+    -c "tools.system.package_manager:mode=${CONAN_SYSREQ_MODE}"
+fi
 
 cmake -S . -B "${CMAKE_DIR}" \
   -DCMAKE_TOOLCHAIN_FILE="${CONAN_DIR}/conan_toolchain.cmake" \
