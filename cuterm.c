@@ -251,10 +251,7 @@ static void ring_append(const char *data, size_t n) {
       continue;
     }
     if (c == '\r') {
-      while (ring_len > 0 && ring[ring_len - 1] != '\n') {
-        ring_len--;
-      }
-      ring[ring_len] = '\0';
+      // CR is common in PTY streams (e.g. CRLF). Do not erase the current line.
       continue;
     }
     if (c < 32 && c != '\n' && c != '\t') {
@@ -443,24 +440,46 @@ int main() {
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
 
-    const int MAX_LINES = 40;
+    const int TOP_MARGIN = 10;
+    const int BOTTOM_MARGIN = 10;
+    const int MAX_VISIBLE_LINES = 256;
+    int line_h = TTF_FontLineSkip(font);
+    if (line_h <= 0)
+      line_h = TTF_FontHeight(font);
+    if (line_h <= 0)
+      line_h = 18;
+    int max_lines = (win_h - TOP_MARGIN - BOTTOM_MARGIN) / line_h;
+    if (max_lines < 1)
+      max_lines = 1;
+    if (max_lines > MAX_VISIBLE_LINES)
+      max_lines = MAX_VISIBLE_LINES;
+
     const char *start = ring;
     if (ring_len > 30000) {
       start = ring + (ring_len - 30000);
     }
 
-    const char *lines[MAX_LINES];
+    const char *lines[MAX_VISIBLE_LINES];
     int count = 0;
     lines[count++] = start;
-    for (const char *p = start; *p && count < MAX_LINES; p++) {
-      if (*p == '\n')
-        lines[count++] = p + 1;
+    for (const char *p = start; *p; p++) {
+      if (*p != '\n')
+        continue;
+      const char *next = p + 1;
+      if (*next == '\0')
+        continue;
+      if (count < max_lines) {
+        lines[count++] = next;
+      } else {
+        memmove(lines, lines + 1, (size_t)(max_lines - 1) * sizeof(lines[0]));
+        lines[max_lines - 1] = next;
+      }
     }
 
-    int y = 10;
+    int y = TOP_MARGIN;
     SDL_Color fg = {230, 230, 230, 255};
 
-    for (int i = (count > MAX_LINES ? count - MAX_LINES : 0); i < count; i++) {
+    for (int i = 0; i < count; i++) {
       const char *line = lines[i];
       const char *end = line;
       while (*end && *end != '\n' && *end != '\r')
@@ -468,7 +487,7 @@ int main() {
 
       int len = (int)(end - line);
       if (len <= 0) {
-        y += 18;
+        y += line_h;
         continue;
       }
 
@@ -489,7 +508,7 @@ int main() {
         }
       }
 
-      y += 18;
+      y += line_h;
     }
     SDL_RenderPresent(ren);
 
