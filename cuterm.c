@@ -8,14 +8,14 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_render.h>
 #include <SDL2/SDL_ttf.h>
-#include <fcntl.h>
+#include "core/pty.h"
+#include "core/screen.h"
+#include "core/vt.h"
 #include <poll.h>
-#include <pty.h>
 #include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 // ---- stb_easy_font: tiny text rendering (no deps) ----
@@ -119,176 +119,9 @@ static int stb_easy_font_print(float x, float y, char *text,
 #endif
 // --- end embedded stb_easy_font.c ---
 
-extern char **environ;
-
-// ---- simple scrollback buffer ----
-#define RING_SIZE (1 << 20) // 1MB output ring
-static char ring[RING_SIZE];
-static size_t ring_len = 0;
-
-typedef enum { T_TEXT, T_ESC, T_CSI, T_OSC, T_OSC_ESC } ansi_state_t;
-
-static void ring_clear(void) {
-  ring_len = 0;
-  ring[0] = '\0';
-}
-
-static int csi_parse_first_param(const char *buf, size_t len, int default_value) {
-  size_t i = 0;
-  int value = 0;
-  int has_digits = 0;
-
-  if (i < len && (buf[i] == '?' || buf[i] == '>' || buf[i] == '<' || buf[i] == '=')) {
-    i++;
-  }
-  for (; i < len; i++) {
-    unsigned char c = (unsigned char)buf[i];
-    if (c >= '0' && c <= '9') {
-      value = value * 10 + (int)(c - '0');
-      has_digits = 1;
-      continue;
-    }
-    if (c == ';') {
-      break;
-    }
-    break;
-  }
-  if (!has_digits) {
-    return default_value;
-  }
-  return value;
-}
-
-static int csi_parse_private_mode(const char *buf, size_t len) {
-  if (len == 0 || buf[0] != '?') {
-    return -1;
-  }
-  return csi_parse_first_param(buf, len, -1);
-}
-
-static void handle_csi_sequence(char final, const char *params, size_t params_len) {
-  if (final == 'J') {
-    int mode = csi_parse_first_param(params, params_len, 0);
-    if (mode == 2 || mode == 3) {
-      ring_clear();
-    }
-    return;
-  }
-
-  if (final == 'h' || final == 'l') {
-    int mode = csi_parse_private_mode(params, params_len);
-    if (mode == 47 || mode == 1047 || mode == 1049) {
-      ring_clear();
-    }
-  }
-}
-
-static void ring_append(const char *data, size_t n) {
-  static ansi_state_t st = T_TEXT;
-  static char csi_params[64];
-  static size_t csi_params_len = 0;
-
-  for (size_t i = 0; i < n; i++) {
-    unsigned char c = (unsigned char)data[i];
-
-    // --------- 先吞掉 ANSI/VT 控制序列（真正解决右边“乱码”） ---------
-    if (st == T_TEXT) {
-      if (c == 0x1b) {
-        st = T_ESC;
-        continue;
-      } // ESC
-    } else if (st == T_ESC) {
-      if (c == '[') {
-        st = T_CSI;
-        csi_params_len = 0;
-        continue;
-      } // CSI
-      if (c == ']') {
-        st = T_OSC;
-        continue;
-      } // OSC
-      if (c == 'c') { // RIS (full reset)
-        ring_clear();
-        st = T_TEXT;
-        continue;
-      }
-      st = T_TEXT; // 其他 ESC 序列，丢掉
-      continue;
-    } else if (st == T_CSI) {
-      // CSI 以 0x40-0x7E 的终止字节结束（m/h/l/K/H 等）
-      if (c >= 0x40 && c <= 0x7E) {
-        handle_csi_sequence((char)c, csi_params, csi_params_len);
-        csi_params_len = 0;
-        st = T_TEXT;
-      } else if (csi_params_len + 1 < sizeof(csi_params)) {
-        csi_params[csi_params_len++] = (char)c;
-      }
-      continue; // CSI 内容全吞
-    } else if (st == T_OSC) {
-      // OSC 以 BEL(0x07) 或 ESC \ 结束
-      if (c == 0x07) {
-        st = T_TEXT;
-        continue;
-      }
-      if (c == 0x1b) {
-        st = T_OSC_ESC;
-        continue;
-      }
-      continue; // OSC 内容全吞
-    } else {    // T_OSC_ESC
-      if (c == '\\')
-        st = T_TEXT; // ESC backslash
-      else st = T_OSC;
-      continue;
-    }
-    // --------------------------------------------------------------------
-
-    if (c == '\b' || c == 0x7f) {
-      if (ring_len > 0) {
-        if (ring[ring_len - 1] != '\n') {
-          ring_len--;
-          ring[ring_len] = '\0';
-        }
-      }
-      continue;
-    }
-    if (c == '\r') {
-      // CR is common in PTY streams (e.g. CRLF). Do not erase the current line.
-      continue;
-    }
-    if (c < 32 && c != '\n' && c != '\t') {
-      continue;
-    }
-    if (ring_len + 1 >= RING_SIZE) {
-      memmove(ring, ring + 1, ring_len - 1);
-      ring_len--;
-    }
-    ring[ring_len++] = (char)c;
-    ring[ring_len] = '\0';
-  }
-}
-
-// ---- PTY spawn ----
-static pid_t spawn_shell_pty(int *out_master_fd) {
-  int master = -1;
-  pid_t pid = forkpty(&master, NULL, NULL, NULL);
-  if (pid < 0)
-    return -1;
-
-  if (pid == 0) {
-    char *argv[] = {"bash", "-i", NULL};
-    execve("/bin/bash", argv, environ);
-    _exit(127);
-  }
-
-  // non-blocking read
-  int flags = fcntl(master, F_GETFL, 0);
-  if (flags >= 0)
-    fcntl(master, F_SETFL, flags | O_NONBLOCK);
-
-  *out_master_fd = master;
-  return pid;
-}
+#include "core/screen.c"
+#include "core/vt.c"
+#include "core/pty.c"
 
 // ---- OpenGL helpers (fixed pipeline, simple) ----
 static void gl_setup_ortho(int w, int h) {
@@ -370,29 +203,27 @@ int main() {
 
   SDL_StartTextInput();
 
-  int master = -1;
-  pid_t child = spawn_shell_pty(&master);
-  if (child < 0) {
-    perror("spawn_shell_pty");
+  CtScreen screen;
+  CtVtParser parser;
+  CtPtySession pty = {.master_fd = -1, .child_pid = -1, .child_alive = 0};
+  ct_screen_init(&screen);
+  ct_vt_init(&parser);
+
+  if (ct_pty_spawn_shell(&pty) < 0) {
+    perror("ct_pty_spawn_shell");
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();
     return 1;
   }
 
-  struct pollfd pfd = {.fd = master, .events = POLLIN};
+  struct pollfd pfd = {.fd = pty.master_fd, .events = POLLIN};
 
   int running = 1;
-  int child_alive = 1;
   while (running) {
-    if (child_alive) {
-      int wstatus = 0;
-      pid_t w = waitpid(child, &wstatus, WNOHANG);
-      if (w == child) {
-        child_alive = 0;
-        running = 0;
-        continue;
-      }
+    if (!ct_pty_check_alive(&pty)) {
+      running = 0;
+      continue;
     }
 
     // 1) pump SDL events
@@ -409,8 +240,8 @@ int main() {
         // send typed text to PTY
         const char *t = e.text.text;
         LOG_ERROR("[TX] text input: '%s'\n", t);
-        if (child_alive && t && *t)
-          (void)write(master, t, strlen(t));
+        if (pty.child_alive && t && *t)
+          (void)ct_pty_write(&pty, t, strlen(t));
       }
       if (e.type == SDL_KEYDOWN) {
         // minimal keys: Enter, Backspace, Ctrl+C/Ctrl+D, Ctrl+Q to quit app.
@@ -418,27 +249,27 @@ int main() {
         SDL_Keymod mod = SDL_GetModState();
         if (k == SDLK_q && (mod & KMOD_CTRL)) {
           running = 0;
-        } else if (!child_alive) {
+        } else if (!pty.child_alive) {
           continue;
         } else if (k == SDLK_RETURN) {
           LOG_ERROR("[TX] enter\n");
           char c = '\r';
-          (void)write(master, &c, 1);
+          (void)ct_pty_write(&pty, &c, 1);
         } else if (k == SDLK_BACKSPACE) {
           char c = 0x7f; // DEL
-          (void)write(master, &c, 1);
+          (void)ct_pty_write(&pty, &c, 1);
         } else if (k == SDLK_c && (mod & KMOD_CTRL)) {
           char c = 0x03; // ETX
-          (void)write(master, &c, 1);
+          (void)ct_pty_write(&pty, &c, 1);
         } else if (k == SDLK_d && (mod & KMOD_CTRL)) {
           char c = 0x04; // EOT
-          (void)write(master, &c, 1);
+          (void)ct_pty_write(&pty, &c, 1);
         }
       }
     }
 
     // 2) read PTY output (non-blocking + poll)
-    int pr = child_alive ? poll(&pfd, 1, 0) : 0;
+    int pr = pty.child_alive ? poll(&pfd, 1, 0) : 0;
     if (pr > 0) {
       if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
         fprintf(stderr, "[RX] poll revents=0x%x (err/hup/nval)\n", pfd.revents);
@@ -446,9 +277,9 @@ int main() {
       if (pfd.revents & POLLIN) {
         char buf[4096];
         for (;;) {
-          ssize_t n = read(master, buf, sizeof(buf));
+          ssize_t n = ct_pty_read(&pty, buf, sizeof(buf));
           if (n > 0)
-            ring_append(buf, (size_t)n);
+            ct_vt_feed(&parser, &screen, buf, (size_t)n);
           else
             break;
         }
@@ -487,9 +318,11 @@ int main() {
     if (max_lines > MAX_VISIBLE_LINES)
       max_lines = MAX_VISIBLE_LINES;
 
-    const char *start = ring;
-    if (ring_len > 30000) {
-      start = ring + (ring_len - 30000);
+    const char *screen_text = ct_screen_data(&screen);
+    size_t screen_len = ct_screen_len(&screen);
+    const char *start = screen_text;
+    if (screen_len > 30000) {
+      start = screen_text + (screen_len - 30000);
     }
 
     const char *lines[MAX_VISIBLE_LINES];
@@ -550,11 +383,7 @@ int main() {
   }
 
   // cleanup
-  close(master);
-  int status = 0;
-  if (child_alive) {
-    (void)waitpid(child, &status, 0);
-  }
+  ct_pty_close(&pty);
 
   SDL_StopTextInput();
   SDL_GL_DeleteContext(ctx);
