@@ -92,3 +92,7 @@ cmake --install build/Release/cmake --prefix build/Release/install
 ## More
 
 更详细的构建说明见 `BUILDING.md`。
+
+## License
+
+本项目采用 `GPL-2.0-only`（与 Linux 内核一致）。详见 `LICENSE`。
