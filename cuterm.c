@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <pty.h>
+#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -127,74 +128,65 @@ static size_t ring_len = 0;
 
 typedef enum { T_TEXT, T_ESC, T_CSI, T_OSC, T_OSC_ESC } ansi_state_t;
 
-static void sanitize_printable(char *dst, size_t dst_sz, const char *src,
-                               size_t n) {
-  size_t j = 0;
-  enum { T_TEXT, T_ESC, T_CSI, T_OSC, T_OSC_ESC } st = T_TEXT;
+static void ring_clear(void) {
+  ring_len = 0;
+  ring[0] = '\0';
+}
 
-  for (size_t i = 0; i < n && j + 1 < dst_sz; i++) {
-    unsigned char c = (unsigned char)src[i];
-    if (st == T_TEXT) {
-      if (c == 0x1b) {
-        st = T_ESC;
-        continue;
-      } // ESC
-      if (c == '\n' || c == '\t') {
-        dst[j++] = (char)c;
-        continue;
-      }
-      if (c < 32 || c == 127)
-        continue; // 控制字符(含 BEL)
-      dst[j++] = (char)c;
-      continue;
-    }
+static int csi_parse_first_param(const char *buf, size_t len, int default_value) {
+  size_t i = 0;
+  int value = 0;
+  int has_digits = 0;
 
-    if (st == T_ESC) {
-      if (c == '[') {
-        st = T_CSI;
-        continue;
-      } // CSI
-      if (c == ']') {
-        st = T_OSC;
-        continue;
-      } // OSC
-      st = T_TEXT; // 其他 ESC 序列，直接丢弃
-      continue;
-    }
-
-    if (st == T_CSI) {
-      // CSI 以 0x40-0x7E 的终止字节结束（m, h, l, K 等）
-      if (c >= 0x40 && c <= 0x7E)
-        st = T_TEXT;
-      continue; // 吞掉 CSI 内容
-    }
-
-    if (st == T_OSC) {
-      // OSC 以 BEL 或 ESC \ 结束
-      if (c == 0x07) {
-        st = T_TEXT;
-        continue;
-      }
-      if (c == 0x1b) {
-        st = T_OSC_ESC;
-        continue;
-      }
-      continue; // 吞掉 OSC 内容
-    }
-
-    // T_OSC_ESC
-    if (c == '\\')
-      st = T_TEXT; // ESC
-    else
-      st = T_OSC;
+  if (i < len && (buf[i] == '?' || buf[i] == '>' || buf[i] == '<' || buf[i] == '=')) {
+    i++;
   }
-  dst[j] = '\0';
+  for (; i < len; i++) {
+    unsigned char c = (unsigned char)buf[i];
+    if (c >= '0' && c <= '9') {
+      value = value * 10 + (int)(c - '0');
+      has_digits = 1;
+      continue;
+    }
+    if (c == ';') {
+      break;
+    }
+    break;
+  }
+  if (!has_digits) {
+    return default_value;
+  }
+  return value;
+}
+
+static int csi_parse_private_mode(const char *buf, size_t len) {
+  if (len == 0 || buf[0] != '?') {
+    return -1;
+  }
+  return csi_parse_first_param(buf, len, -1);
+}
+
+static void handle_csi_sequence(char final, const char *params, size_t params_len) {
+  if (final == 'J') {
+    int mode = csi_parse_first_param(params, params_len, 0);
+    if (mode == 2 || mode == 3) {
+      ring_clear();
+    }
+    return;
+  }
+
+  if (final == 'h' || final == 'l') {
+    int mode = csi_parse_private_mode(params, params_len);
+    if (mode == 47 || mode == 1047 || mode == 1049) {
+      ring_clear();
+    }
+  }
 }
 
 static void ring_append(const char *data, size_t n) {
   static ansi_state_t st = T_TEXT;
-  char safe[512];
-  sanitize_printable(safe, sizeof(safe), data, n);
+  static char csi_params[64];
+  static size_t csi_params_len = 0;
 
   for (size_t i = 0; i < n; i++) {
     unsigned char c = (unsigned char)data[i];
@@ -208,18 +200,29 @@ static void ring_append(const char *data, size_t n) {
     } else if (st == T_ESC) {
       if (c == '[') {
         st = T_CSI;
+        csi_params_len = 0;
         continue;
       } // CSI
       if (c == ']') {
         st = T_OSC;
         continue;
       } // OSC
+      if (c == 'c') { // RIS (full reset)
+        ring_clear();
+        st = T_TEXT;
+        continue;
+      }
       st = T_TEXT; // 其他 ESC 序列，丢掉
       continue;
     } else if (st == T_CSI) {
       // CSI 以 0x40-0x7E 的终止字节结束（m/h/l/K/H 等）
-      if (c >= 0x40 && c <= 0x7E)
+      if (c >= 0x40 && c <= 0x7E) {
+        handle_csi_sequence((char)c, csi_params, csi_params_len);
+        csi_params_len = 0;
         st = T_TEXT;
+      } else if (csi_params_len + 1 < sizeof(csi_params)) {
+        csi_params[csi_params_len++] = (char)c;
+      }
       continue; // CSI 内容全吞
     } else if (st == T_OSC) {
       // OSC 以 BEL(0x07) 或 ESC \ 结束
@@ -234,7 +237,7 @@ static void ring_append(const char *data, size_t n) {
       continue; // OSC 内容全吞
     } else {    // T_OSC_ESC
       if (c == '\\')
-        st = T_TEXT; // ESC \
+        st = T_TEXT; // ESC backslash
       else st = T_OSC;
       continue;
     }
@@ -309,7 +312,20 @@ static void draw_text(float x, float y, const char *text) {
   glDisableClientState(GL_VERTEX_ARRAY);
 }
 
+static void configure_locale_runtime(void) {
+  (void)setlocale(LC_ALL, "");
+#ifdef __linux__
+  const char *xlocaledir = getenv("XLOCALEDIR");
+  if ((!xlocaledir || xlocaledir[0] == '\0') &&
+      access("/usr/share/X11/locale/locale.alias", R_OK) == 0) {
+    (void)setenv("XLOCALEDIR", "/usr/share/X11/locale", 0);
+  }
+#endif
+}
+
 int main() {
+  configure_locale_runtime();
+
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
     return 1;
@@ -367,7 +383,18 @@ int main() {
   struct pollfd pfd = {.fd = master, .events = POLLIN};
 
   int running = 1;
+  int child_alive = 1;
   while (running) {
+    if (child_alive) {
+      int wstatus = 0;
+      pid_t w = waitpid(child, &wstatus, WNOHANG);
+      if (w == child) {
+        child_alive = 0;
+        running = 0;
+        continue;
+      }
+    }
+
     // 1) pump SDL events
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -382,14 +409,18 @@ int main() {
         // send typed text to PTY
         const char *t = e.text.text;
         LOG_ERROR("[TX] text input: '%s'\n", t);
-        if (t && *t)
+        if (child_alive && t && *t)
           (void)write(master, t, strlen(t));
       }
       if (e.type == SDL_KEYDOWN) {
-        // minimal keys: Enter, Backspace, Ctrl+C
+        // minimal keys: Enter, Backspace, Ctrl+C/Ctrl+D, Ctrl+Q to quit app.
         SDL_Keycode k = e.key.keysym.sym;
         SDL_Keymod mod = SDL_GetModState();
-        if (k == SDLK_RETURN) {
+        if (k == SDLK_q && (mod & KMOD_CTRL)) {
+          running = 0;
+        } else if (!child_alive) {
+          continue;
+        } else if (k == SDLK_RETURN) {
           LOG_ERROR("[TX] enter\n");
           char c = '\r';
           (void)write(master, &c, 1);
@@ -399,12 +430,15 @@ int main() {
         } else if (k == SDLK_c && (mod & KMOD_CTRL)) {
           char c = 0x03; // ETX
           (void)write(master, &c, 1);
+        } else if (k == SDLK_d && (mod & KMOD_CTRL)) {
+          char c = 0x04; // EOT
+          (void)write(master, &c, 1);
         }
       }
     }
 
     // 2) read PTY output (non-blocking + poll)
-    int pr = poll(&pfd, 1, 0);
+    int pr = child_alive ? poll(&pfd, 1, 0) : 0;
     if (pr > 0) {
       if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
         fprintf(stderr, "[RX] poll revents=0x%x (err/hup/nval)\n", pfd.revents);
@@ -518,7 +552,9 @@ int main() {
   // cleanup
   close(master);
   int status = 0;
-  (void)waitpid(child, &status, 0);
+  if (child_alive) {
+    (void)waitpid(child, &status, 0);
+  }
 
   SDL_StopTextInput();
   SDL_GL_DeleteContext(ctx);
