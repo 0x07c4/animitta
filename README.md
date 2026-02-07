@@ -95,4 +95,4 @@ cmake --install build/Release/cmake --prefix build/Release/install
 
 ## License
 
-本项目采用 `GPL-2.0-only`（与 Linux 内核一致）。详见 `LICENSE`。
+本项目采用 GNU General Public License v3.0（`GPL-3.0-only`）。详见 `LICENSE`。
