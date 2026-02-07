@@ -2,7 +2,6 @@
 #include <SDL2/SDL_error.h>
 #include <SDL2/SDL_pixels.h>
 #define _GNU_SOURCE
-#define LOG_ENABLE
 #include "base/log.h"
 #include <GL/gl.h>
 #include <SDL2/SDL.h>
@@ -16,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <unistd.h>
 
 // ---- stb_easy_font: tiny text rendering (no deps) ----
@@ -156,6 +156,42 @@ static void configure_locale_runtime(void) {
 #endif
 }
 
+static TTF_Font *open_ui_font(int point_size) {
+  const char *env_font = getenv("CUTERM_FONT");
+  const char *candidates[] = {
+      "/usr/share/fonts/maple/MapleMono-NF-CN-Regular.ttf",
+      "/usr/share/fonts/TTF/JetBrainsMonoNL-Regular.ttf",
+      NULL,
+  };
+  int i = 0;
+
+  if (env_font && env_font[0] != '\0') {
+    TTF_Font *font = TTF_OpenFont(env_font, point_size);
+    if (font) {
+      LOG_INFO("Using font: %s", env_font);
+      return font;
+    }
+    LOG_WARN("OpenFont failed: %s (%s)", env_font,
+             (TTF_GetError() && TTF_GetError()[0] != '\0') ? TTF_GetError() : "unknown");
+  }
+
+  for (i = 0; candidates[i] != NULL; i++) {
+    const char *path = candidates[i];
+    TTF_Font *font = NULL;
+    font = TTF_OpenFont(path, point_size);
+    if (font) {
+      LOG_INFO("Using font: %s", path);
+      return font;
+    }
+    LOG_DEBUG("OpenFont failed: %s (%s)", path,
+              (TTF_GetError() && TTF_GetError()[0] != '\0') ? TTF_GetError()
+                                                             : "unknown");
+  }
+  LOG_ERROR("No usable font found. CUTERM_FONT=%s errno=%d (%s)",
+            env_font ? env_font : "(unset)", errno, strerror(errno));
+  return NULL;
+}
+
 int main() {
   configure_locale_runtime();
 
@@ -194,10 +230,9 @@ int main() {
     LOG_ERROR("TTF_Init: %s", SDL_GetError());
     return 1;
   }
-  TTF_Font *font =
-      TTF_OpenFont("/usr/share/fonts/TTF/JetBrainsMonoNL-Regular.ttf", 28);
+  TTF_Font *font = open_ui_font(28);
   if (!font) {
-    LOG_ERROR("OpenFont: %s", SDL_GetError());
+    LOG_ERROR("OpenFont: %s", TTF_GetError());
     return 1;
   }
 
@@ -239,7 +274,7 @@ int main() {
       if (e.type == SDL_TEXTINPUT) {
         // send typed text to PTY
         const char *t = e.text.text;
-        LOG_ERROR("[TX] text input: '%s'\n", t);
+        LOG_DEBUG("[TX] text input: '%s'", t);
         if (pty.child_alive && t && *t)
           (void)ct_pty_write(&pty, t, strlen(t));
       }
@@ -252,7 +287,7 @@ int main() {
         } else if (!pty.child_alive) {
           continue;
         } else if (k == SDLK_RETURN) {
-          LOG_ERROR("[TX] enter\n");
+          LOG_DEBUG("[TX] enter");
           char c = '\r';
           (void)ct_pty_write(&pty, &c, 1);
         } else if (k == SDLK_BACKSPACE) {

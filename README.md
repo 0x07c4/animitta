@@ -52,6 +52,19 @@ python3 -m venv .venv
 ./build/Release/install/bin/cuterm
 ```
 
+### Font
+
+`cuterm` 默认优先使用 `Maple Mono NF CN`，以便更好显示中文与 Nerd Font 图标：
+
+- 项目地址：`https://github.com/subframe7536/maple-font`
+- 默认路径：`/usr/share/fonts/maple/MapleMono-NF-CN-Regular.ttf`
+
+也可以通过环境变量覆盖字体：
+
+```bash
+CUTERM_FONT=/path/to/your-font.ttf ./build/Release/bin/cuterm
+```
+
 ## Manual Conan/CMake Flow
 
 ```bash
